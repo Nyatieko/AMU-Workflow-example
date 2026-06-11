@@ -1,0 +1,408 @@
+---
+title: "AMU workflow example"
+author: "Dr. Naomi Kemunto Peter"
+date: "2026-06-11"
+output: html_document
+---
+
+# My role
+
+I independently developed the analytical workflow, including data cleaning, validation procedures, antimicrobial use quantification, statistical modelling, visualization, and reporting.
+
+# Skills demonstated
+
+Data cleaning and validation
+Longitudinal data management
+Epidemiological analysis
+Antimicrobial use quantification
+Mixed-effects regression modelling
+Data visualization
+Reproducible reporting using R Markdown
+
+# Overview
+This R Markdown file provides an example analytical workflow from a completed PhD research project on antimicrobial use in semi-intensive poultry systems in Kenya.
+
+The original data are not publicly available because they are subject to research data restrictions. The workflow is provided to demonstrate coding structure,data cleaning procedures, analytical thinking, visualization, and reproducible reporting practices.
+
+
+# Project objective
+ The objective of this analysis was to quantify antimicrobial use in semi-intensive poultry farms and describe temporal patterns of use across production cycles using mass-based antimicrobial use metrics and evaluate association of mortality with antimicrobial dosing practices.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+###Loading the following packages to support data cleaning and analysis
+
+library(tidyverse)
+library(epiDisplay)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(scales)
+library(reshape)
+library(reshape2)
+library(data.table)
+library(magrittr)
+library(lubridate)
+library(httr)
+library(RColorBrewer)
+library(tools)
+library(stats)
+library(janitor)
+
+```
+
+
+# Data import
+
+```{r}
+
+# This workflow is an excerpt from a larger analytical pipeline developed during a completed PhD research project.
+
+# Some intermediate datasets and objects are generated in preceding processing steps that are not included in this example repository.
+
+# The original research data are not publicly available due to data-sharing restrictions. A demonstration dataset is referenced here to illustrate the analytical workflow.
+
+
+AMU_data<-read.csv("AMU_demonstration_data.csv")
+
+
+```
+
+
+# Data cleaning and validation
+
+
+```{r}
+
+###cleaning and validating data
+
+AMU_data1<-AMU_data%>%
+  
+  ###correct the wrongly entered number of chicken present
+  
+  dplyr::mutate(
+    number_chicken_present=case_when(
+     number_chicken_present==598 & 
+        date_on_form %in% c("2026-04-15","2026-04-16","2026-04-17","2026-04-18","2026-04-19","2026-04-20","2026-04-21","2026-04-22","2026-04-23","2026-04-24","2026-04-25") & 
+        Farm_ID=="A0345" & 
+        No_cycles==1~596,
+    
+    number_chicken_present %in% c(987) & 
+      date_on_form %in% c("2026-04-17") & 
+      Farm_ID %in% c("A0354") & 
+      No_cycles==1~985,
+    
+    number_chicken_present %in% c(885) & 
+      date_on_form %in% c("2026-04-20") & 
+      Farm_ID %in% c("A0355") & 
+      No_cycles==1~884,
+    
+    number_chicken_present %in% c(984) & 
+      date_on_form %in% c("2026-04-24") & 
+      Farm_ID %in% c("A0304") & 
+      No_cycles==1~983,
+  TRUE~number_chicken_present))%>%
+  
+  ###correct the wrongly entered number of chicken given medicine
+  
+   dplyr::mutate(number_chicken_medicine=case_when(
+     number_chicken_medicine==771 & 
+       Farm_ID=="A0357_2" & 
+       date_on_form=="2026-05-23" & 
+       No_cycles==1~774,
+     
+     number_chicken_medicine==218 & 
+       Farm_ID=="A0107" & 
+       date_on_form %in% c("2026-04-22","2026-04-23","2026-04-24","2026-04-25","2026-04-26") &
+       No_cycles==1~699,
+     
+     number_chicken_medicine==913 & 
+       Farm_ID=="A0108_2" & 
+       date_on_form %in% c("2026-05-14","2026-05-15","2026-05-16","2026-05-17","2026-05-18") &
+       No_cycles==1~1012,
+     
+     number_chicken_medicine==900 & 
+       Farm_ID=="A0101" & 
+       date_on_form %in% c("2026-05-24") & 
+       No_cycles==1~595,
+   TRUE~number_chicken_medicine))%>%
+  
+   ###correct the wrongly entered number of chicken dead
+  
+  dplyr::mutate(number_of_dead_chicken=case_when(
+    number_of_dead_chicken==80 & 
+      Farm_ID=="A01080" & 
+      date_on_form %in% c("2026-07-03","2026-07-04","2026-07-05") & 
+      No_cycles==1~0, 
+    
+    number_of_dead_chicken==0 & 
+      Farm_ID=="A010_2" & 
+      date_on_form %in% c("2026-07-17") & 
+      No_cycles==3~5,
+    
+     number_of_dead_chicken==0 & 
+      Farm_ID=="A0108_3" & 
+      date_on_form %in% c("2026-07-28") & 
+      No_cycles==3~2,
+  TRUE~number_of_dead_chicken))%>%
+  
+   ###correct the wrongly entered number of Day-old-chicken received
+  
+  dplyr::mutate(number_doc=case_when(
+    number_doc==950 & 
+      Farm_ID=="A0383" & 
+      date_recieved %in% c("2026-08-27") & 
+      No_cycles==4~954,
+  TRUE~number_doc))%>%
+      
+  ####remove the duplicated entries
+  
+dplyr::filter(!(Farm_ID=="A0359" & No_cycles==1 & date_on_form =="2026-05-03" & type_medicine=="antibiotics"))%>%
+  
+  dplyr::filter(!(Farm_ID=="A0351" & No_cycles==1 & date_on_form =="2026-05-05" & number_chicken_medicine==300))%>%
+
+dplyr::filter(!(Farm_ID=="A0353" & No_cycles==1 & date_on_form =="2026-05-13" & is.na(number_chicken_medicine)))%>%
+
+  distinct()%>%
+  
+   ###correct the wrongly entered amount of water for medicine dilution
+  
+  dplyr::mutate(amt_of_water=case_when(
+    coversheet.farm_barcode=="A0341" & 
+      date_on_form %in%c("2026-07-21","2026-07-23") & 
+      name_of_antibiotics=="Colistin" & 
+      amt_of_water==70~80,
+                                                 
+    coversheet.farm_barcode=="A0171" & 
+      production_cycles==151 & 
+      name_of_antibiotics=="Super skajcycline" & 
+      amt_of_water==20~5,
+    TRUE~amt_of_water))
+
+```
+
+
+# Antimicrobial use quantfifaction
+
+```{r}
+
+###quantification of antimicrobial usage using mass-based metrics
+
+####Mass based for all farms per farm per cycle
+
+####data for all farms included in the study
+farmCycles7<-farmCycles1
+
+
+####combine farms data with antimicrobial use data
+
+allfarmCycles<-merge(farmCycles7,daily_AMU,by.x ="coversheet.farm_barcode",by.y = "coversheet.farm_barcode",all.x = TRUE )
+
+
+allfarmCycles1<-allfarmCycles%>%
+  dplyr::select(coversheet.farm_barcode,Farm_label,max_cycles,AMU,No_cycles,production_cycles,Production_day,month,weight_kg,number_treated,antibiotic_name,grp_api_used.concentartionofaai,grp_api_used.unitofaai,api_name,antibiotic_amount)%>% ###select relevant columns
+  
+  mutate(mass=grp_api_used.concentartionofaai*antibiotic_amount)%>% ###calculate the mass for each entry
+  mutate(biomass=weight_kg*number_treated)%>%  ###calculate the biomass for each entry
+  dplyr::mutate(total_mass=sum(mass,na.rm = TRUE))%>% ### sum mass for all entries
+  dplyr::mutate(total_biomass=sum(biomass,na.rm = TRUE))%>%  ###sum biomass for all entries
+  dplyr::mutate(total_mg_PCU=total_mass/total_biomass)%>%   ###calculate the overall mass-based metric (mg/PCU)
+  dplyr::filter(!is.na(api_name)) #### remove entries/farms that did not use antibiotics
+
+
+
+###calculate the total usage (mg/PCU) per antibiotic per farm per cycle
+
+allfarmCycles2=allfarmCycles1%>%
+  group_by(coversheet.farm_barcode,api_name,No_cycles)%>% ###group the the antibiotic per farm per cycle
+  dplyr::mutate(total_mass_farm=sum(mass))%>% ##calculate the total mass per antibiotic in each farm per cycle
+  dplyr::mutate(total_biomass_farm=sum(biomass))%>%  ##calculate the total biomass per antibiotic in each farm per cycle
+  dplyr::ungroup()%>% ##ungroup the data for each farm
+  dplyr::mutate(mg_pcu_farm=total_mass_farm/total_biomass_farm)%>% ###calculate the usage in mg/PCU (mass-based metric)
+  dplyr::select(coversheet.farm_barcode,No_cycles,Farm_label,api_name,mg_pcu_farm)%>% ###select the relevant columns
+  dplyr::distinct() ###select the unique entries only - removes duplicates
+#####################################################################################
+
+####get number of farms using each antibiotic during the study period in each cycle
+
+allfarmCycles2_1<-allfarmCycles2%>%
+  dplyr::group_by(api_name,No_cycles)%>% ###group antibiotic per cycle
+  dplyr::mutate(no_farms=n_distinct(coversheet.farm_barcode))%>% ### count the number of farms using each antibiotic per cycle
+  dplyr::ungroup()%>% ####ungroup the antibiotic per cycle
+  dplyr::group_by(No_cycles)%>% ###group the data into cycles
+  dplyr::mutate(median_mgPCU=median(mg_pcu_farm,na.rm = TRUE))%>% ###calculate the median usage in mg/PCU per cycle
+  dplyr::ungroup() ###ungroup the cycles data
+
+
+#### subset data to get data showing the median mg/PCU per cycle
+median_mgPCU<-allfarmCycles2_1 %>%
+  dplyr::select(No_cycles,median_mgPCU)%>%
+  dplyr::distinct()
+
+
+###plot a line graph to show the proportion of farms using an antibiotic in each cycle
+
+cycleTrend<-allfarmCycles2_1%>%
+  dplyr::mutate(no_farmsCycle=case_when(No_cycles==1~83,
+                                        No_cycles==2~81,
+                                        No_cycles==3~79,
+                                        No_cycles==4~65,
+                                        No_cycles==5~57,
+                                        No_cycles==6~34))%>%  ####create a column with the total number of farms in each cycle
+  dplyr::mutate(prop_farmsCycle=no_farms/no_farmsCycle*100)%>% ###calculate the proportion of farms using antimicrobial in each cycle
+  dplyr::select(No_cycles,api_name,no_farms,no_farmsCycle,prop_farmsCycle)%>% ####select relevant columns
+  dplyr::distinct() ###get only unique entries - no duplicates
+
+ 
+####plot a line graph
+ ggplot(cycleTrend,aes(x=No_cycles,y=prop_farmsCycle))+
+    geom_line(linewidth=2.5,color="#CD5B45")+
+    geom_point(size=4,color="#00CDCD")+
+    facet_wrap(~api_name)+
+    theme_bw()+
+    labs(
+      x="Number of production cycles",
+      y= "Proportion of farms"
+    )+
+    scale_x_continuous(breaks = seq(1,6,1))+
+    theme(
+    axis.title = element_text(size = 20, face = "bold", colour = "black"),
+    plot.title = element_text(size = 20, face = "bold", colour = "black", hjust = 0.5),
+    axis.text = element_text(size = 20, face = "bold", color = "black"),
+    legend.title = element_text(size = 22, face = "bold"),
+    legend.text = element_text(size = 20, face = "bold"),
+    strip.text.x = element_text(size = 20, colour = "black", face = "bold")
+  )
+
+#####save the line graph in the working folder
+  
+  tiff(filename = "AMU_cycle.tiff",type = "cairo", units = "mm",width = 540,height =340,pointsize = 20,res = 300)
+  
+ggplot(cycleTrend,aes(x=No_cycles,y=prop_farmsCycle))+
+    geom_line(linewidth=3,color="#CD5B45")+
+    geom_point(size=5,color="#00CDCD")+
+    facet_wrap(~api_name)+
+    theme_bw()+
+    labs(
+      x="Number of production cycles",
+      y= "Proportion of farms"
+    )+
+    scale_x_continuous(breaks = seq(1,6,1))+
+    theme(
+    axis.title = element_text(size = 28, face = "bold", colour = "black"),
+    plot.title = element_text(size = 28, face = "bold", colour = "black", hjust = 0.5),
+    axis.text = element_text(size = 28, face = "bold", color = "black"),
+    legend.title = element_text(size = 30, face = "bold"),
+    legend.text = element_text(size = 28, face = "bold"),
+    strip.text.x = element_text(size = 28, colour = "black", face = "bold")
+  )
+
+dev.off()
+
+
+```
+
+
+
+# Mortality analysis
+
+
+```{r}
+
+#####calculate mortality rate
+
+##### calculate overall cycle mortality
+
+cycle_mortality<-mortality%>%
+  group_by(coversheet.farm_barcode,No_cycles)%>%  ##group mortality data per farm per cycle
+  mutate(total_dead=sum(no.Dead,na.rm = TRUE))%>%  ##get the total number of dead chicken per cycle per farm
+  ungroup()%>% ###ungroup the farm mortality per cycle
+  dplyr::select(coversheet.farm_barcode,No_cycles,no_DOC,total_dead,AMU)%>% ###select relevant columns
+  distinct()%>% ###subset unique data - no duplicates
+  dplyr::mutate(mortality=total_dead/no_DOC*100)%>% ###calculate cycle mortality rate
+  dplyr::mutate(cycles=case_when(
+    No_cycles==1~"Cycle 1",
+    No_cycles==2~"Cycle 2",
+    No_cycles==3~"Cycle 3",
+    No_cycles==4~"Cycle 4",
+    No_cycles==5~"Cycle 5",
+    No_cycles==6~"Cycle 6",
+  ))  ###rename the number of cycles
+
+  
+  ### calculate the minimum, 1st quartile, median, mean, 3rd quartile and maximum cycle mortality per cycle
+  summary(cycle_mortality$mortality[cycle_mortality$No_cycles==1])
+  summary(cycle_mortality$mortality[cycle_mortality$No_cycles==2])
+  summary(cycle_mortality$mortality[cycle_mortality$No_cycles==3])
+  summary(cycle_mortality$mortality[cycle_mortality$No_cycles==4])
+  summary(cycle_mortality$mortality[cycle_mortality$No_cycles==5])
+  summary(cycle_mortality$mortality[cycle_mortality$No_cycles==6])
+
+```
+
+
+# Mixed-effects regression model
+
+
+```{r}
+
+######Run linear mixed-effects model to establish if dosing ratio is associated with daily mortality
+
+dailyMortData<-daily_mortality%>%
+  dplyr::select(coversheet.farm_barcode,No_cycles,Production_day,daily_mortality)###mortality data
+
+daily_UDD_DDD1<-cycle1Metric_b%>%
+  dplyr::select(coversheet.farm_barcode,No_cycles,Production_day,UDD_DDDTreat) ###dosing practices data
+
+###combine mortality and dosing practices data
+daily_mort_dose<-merge(daily_UDD_DDD1,dailyMortData,by.x = c("coversheet.farm_barcode","No_cycles","Production_day"),by.y =c("coversheet.farm_barcode","No_cycles","Production_day"),all = TRUE )%>%
+  dplyr::filter(!is.na(UDD_DDDTreat))
+
+
+###Run the linear mixed-effects model - daily mortality as fixed-effects and farm and cycle no. as random effects
+dailyUseMort<-lmer(log(UDD_DDDTreat)~daily_mortality+ (1 | coversheet.farm_barcode/No_cycles), data = daily_mort_dose)
+
+summary(dailyUseMort)
+
+# Get predicted values for daily mortality and use (dosing practice) 
+pred_mort <- ggpredict(dailyUseMort, terms = "daily_mortality")
+
+
+###plot the predicted values
+ggplot(pred_mort, aes(x, predicted)) +
+  geom_line(color = "steelblue", size = 1.2) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2,fill = "steelblue") +
+  theme_bw()+
+  labs(x = "Daily mortality", y = "Predicted UDD/DDD dosing ratio",
+       title = "Effect of daily mortality on UDD/DDD dosing ratio")+
+  theme(
+    axis.title = element_text(size = 20, face = "bold", colour = "black"),
+    plot.title = element_text(size = 20, face = "bold", colour = "black"),
+    axis.text = element_text(size = 20, face = "bold", color = "black"),
+    legend.title = element_text(size = 22, face = "bold"),
+    legend.text = element_text(size = 20, face = "bold"),
+    strip.text.x = element_text(size=20, colour="Black", face="bold")
+  )
+
+
+```
+
+
+####    Interpretation
+
+This analysis quantified antimicrobial use using mass-based metrics (mg/PCU), explored temporal patterns across production cycles and evaluated association between mortality and dosing practices.
+
+The workflow demonstrates how raw longitudinal surveillance data were transformed into analytical outputs suitable for epidemiological interpretation and decision-making.
+
+#####   Reproducibility Notes
+
+This workflow was developed using R and R Markdown.
+
+The analytical process was organized into clearly defined stages including data cleaning, validation, metric calculation, regression modelling, visualization, and interpretation.
+
+The original research data are not included because they are subject to data-sharing restrictions.
+
+
+
